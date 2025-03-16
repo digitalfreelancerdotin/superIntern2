@@ -63,3 +63,4 @@ superinterns4/
 # rules
 - All new components should go to the components folder and named like example-component.tsx unless otherwise specified
 - All new pages go in /app
+- we are giong to use powershell to execute all commands
