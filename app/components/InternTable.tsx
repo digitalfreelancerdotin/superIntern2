@@ -20,13 +20,37 @@ export function InternTable() {
   const supabase = createClientComponentClient<Database>()
 
   useEffect(() => {
-    loadInterns()
-  }, [])
+    checkAuthAndLoadInterns();
+  }, []);
+
+  const checkAuthAndLoadInterns = async () => {
+    try {
+      const { data: { session }, error: authError } = await supabase.auth.getSession();
+      
+      if (authError) {
+        console.error('Auth error:', authError);
+        return;
+      }
+
+      console.log('Auth state:', session ? 'Authenticated' : 'Not authenticated');
+      
+      if (!session) {
+        console.log('No active session, loading public data only');
+      }
+
+      await loadInterns();
+    } catch (error) {
+      console.error('Error checking auth state:', error);
+      setLoading(false);
+    }
+  };
 
   const loadInterns = async () => {
     try {
+      console.log('Starting to load interns...');
+      
       // Get all intern profiles
-      const { data: internProfiles, error } = await supabase
+      const { data: internProfiles, error: profileError } = await supabase
         .from('intern_profiles')
         .select(`
           id,
@@ -37,34 +61,71 @@ export function InternTable() {
         `)
         .eq('is_admin', false)
         .order('total_points', { ascending: false })
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: true });
 
-      if (error) throw error
+      if (profileError) {
+        console.error('Error fetching intern profiles:', profileError);
+        throw profileError;
+      }
+
+      console.log('Fetched intern profiles:', internProfiles);
 
       // Get completed tasks count for each intern
       if (internProfiles) {
         const internsWithTasks = await Promise.all(
           internProfiles.map(async (profile) => {
-            const { count } = await supabase
-              .from('task_applications')
-              .select('*', { count: 'exact', head: true })
-              .eq('intern_id', profile.id)
-              .eq('status', 'completed')
+            try {
+              const { count, error: taskError } = await supabase
+                .from('task_applications')
+                .select('*', { count: 'exact', head: true })
+                .eq('intern_id', profile.id)
+                .eq('status', 'completed');
 
-            return {
-              id: profile.id,
-              first_name: profile.first_name,
-              last_name: profile.last_name,
-              total_points: profile.total_points || 0,
-              tasks_completed: count || 0,
-              created_at: profile.created_at
+              if (taskError) {
+                console.error(`Error fetching tasks for intern ${profile.id}:`, taskError);
+                return {
+                  id: profile.id,
+                  first_name: profile.first_name,
+                  last_name: profile.last_name,
+                  total_points: profile.total_points || 0,
+                  tasks_completed: 0,
+                  created_at: profile.created_at
+                };
+              }
+
+              return {
+                id: profile.id,
+                first_name: profile.first_name,
+                last_name: profile.last_name,
+                total_points: profile.total_points || 0,
+                tasks_completed: count || 0,
+                created_at: profile.created_at
+              };
+            } catch (err) {
+              console.error(`Error processing intern ${profile.id}:`, err);
+              return {
+                id: profile.id,
+                first_name: profile.first_name,
+                last_name: profile.last_name,
+                total_points: profile.total_points || 0,
+                tasks_completed: 0,
+                created_at: profile.created_at
+              };
             }
           })
-        )
-        setInterns(internsWithTasks)
+        );
+        console.log('Processed interns with tasks:', internsWithTasks);
+        setInterns(internsWithTasks);
+      } else {
+        console.log('No intern profiles found');
+        setInterns([]);
       }
     } catch (error) {
-      console.error('Error loading interns:', error)
+      console.error('Error in loadInterns:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message);
+      }
+      setInterns([]);
     } finally {
       setLoading(false)
     }

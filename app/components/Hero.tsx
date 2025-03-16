@@ -119,7 +119,20 @@ export default function Hero() {
             >🏆</motion.span>
             <br className="my-2" />
             <div className="relative inline-block">
-              Be the Super-Intern&nbsp;&nbsp;&nbsp;
+              <span style={{
+                fontSize: '48px',
+                WebkitTextStroke: '0.5px black',
+                WebkitTextFillColor: '#ff0000',
+                textShadow: '3px 3px 0 #FFD700',
+                filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
+                fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+                letterSpacing: '0.1em',
+                position: 'relative',
+                zIndex: 1,
+                fontWeight: '900',
+                transform: 'skew(-10deg)',
+                display: 'inline-block'
+              }}>BE THE SUPER INTERNS</span>
               <AnimatePresence>
                 {!isScrolled && (
                   <motion.span
