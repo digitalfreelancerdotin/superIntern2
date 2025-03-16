@@ -73,6 +73,12 @@ export function Sidebar({ className }: { className?: string }) {
       icon: Users,
       current: pathname === "/dashboard/referrals",
     },
+    {
+      name: "Profile",
+      href: "/dashboard/profile",
+      icon: UserCog,
+      current: pathname === "/dashboard/profile",
+    },
   ];
 
   // Admin-only navigation items

@@ -1,26 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-export const POINTS_PER_REFERRAL = parseInt(process.env.POINTS_PER_REFERRAL || '50', 10); // Points awarded for each successful referral
-export const TASKS_REQUIRED = parseInt(process.env.TASKS_REQUIRED || '5', 10); // Number of tasks referred user needs to complete
-
-// Generate a random referral code
-export function generateReferralCode(length: number = 6): string {
-  const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let code = '';
-  for (let i = 0; i < length; i++) {
-    code += characters.charAt(Math.floor(Math.random() * characters.length));
-  }
-  return code;
-}
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import { Database } from '@/lib/database.types';
+import { generateReferralCode, POINTS_PER_REFERRAL, TASKS_REQUIRED } from './referral-utils';
 
 // Ensure referral code exists for a user
 export async function ensureReferralCode(userId: string): Promise<string | null> {
   try {
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient({ cookies: () => cookieStore });
+
     // First, check if user already has a referral code
     const { data: existingCode, error: fetchError } = await supabase
       .from('referral_codes')
@@ -76,8 +64,12 @@ interface ReferralData {
   status: string;
 }
 
+// Server-side function to handle referral task completion
 export async function handleReferralTaskCompletion(userId: string) {
   try {
+    const cookieStore = cookies();
+    const supabase = createServerComponentClient<Database>({ cookies: () => cookieStore });
+
     // Find the referral record for this user
     const { data: referralData, error: referralError } = await supabase
       .from('referrals')

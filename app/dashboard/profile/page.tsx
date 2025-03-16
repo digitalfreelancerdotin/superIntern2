@@ -2,22 +2,32 @@
 
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Button } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { useToast } from '@/app/components/ui/use-toast';
 import { Card } from '@/app/components/ui/card';
-import { ReferralStats } from '@/app/components/ReferralStats';
 import { useAuth } from '@/app/context/auth-context';
 
 interface Profile {
-  first_name: string;
-  last_name: string;
+  user_id: string;
   email: string;
-  total_points: number;
-  is_admin: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  phone_number: string | null;
+  github_url: string | null;
+  resume_url: string | null;
+  location: string | null;
+  university: string | null;
+  major: string | null;
+  graduation_year: string | null;
 }
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const supabase = createClientComponentClient();
+  const { toast } = useToast();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -47,6 +57,50 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profile) return;
+
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from('intern_profiles')
+        .update({
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          phone_number: profile.phone_number,
+          github_url: profile.github_url,
+          location: profile.location,
+          university: profile.university,
+          major: profile.major,
+          graduation_year: profile.graduation_year,
+        })
+        .eq('user_id', profile.user_id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Profile updated successfully",
+      });
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleChange = (field: keyof Profile, value: string) => {
+    if (profile) {
+      setProfile({ ...profile, [field]: value });
+    }
+  };
+
   if (isLoading) {
     return <div className="p-8">Loading...</div>;
   }
@@ -56,47 +110,136 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
+    <div className="container mx-auto py-8">
       <Card className="p-6">
-        <h1 className="text-2xl font-bold mb-6">Profile</h1>
+        <h1 className="text-2xl font-bold mb-6">Profile Settings</h1>
         
-        <div className="space-y-4">
-          <div>
-            <h2 className="font-semibold">Name</h2>
-            <p>{profile.first_name} {profile.last_name}</p>
-          </div>
-          
-          <div>
-            <h2 className="font-semibold">Email</h2>
-            <p>{profile.email}</p>
-          </div>
-          
-          <div>
-            <h2 className="font-semibold">Total Points</h2>
-            <p>{profile.total_points}</p>
-          </div>
-          
-          {profile.is_admin && (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <span className="inline-block px-2 py-1 text-sm bg-blue-100 text-blue-800 rounded">
-                Admin
-              </span>
+              <label htmlFor="email" className="block text-sm font-medium mb-1">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                value={profile.email}
+                disabled
+                className="bg-muted text-muted-foreground"
+              />
             </div>
-          )}
-        </div>
-      </Card>
 
-      <Card className="p-6">
-        <h2 className="text-xl font-bold mb-4">Referral Program</h2>
-        <p className="text-gray-600 mb-6">
-          Share your referral link with friends and earn 100 points when they join and complete their first task!
-        </p>
-        {/* Comment out or remove if not needed here */}
-        {/* <ReferralShare /> */}
-      </Card>
+            <div>
+              <label htmlFor="firstName" className="block text-sm font-medium mb-1">
+                First Name
+              </label>
+              <Input
+                id="firstName"
+                type="text"
+                value={profile.first_name || ''}
+                onChange={(e) => handleChange('first_name', e.target.value)}
+                placeholder="Enter your first name"
+              />
+            </div>
 
-      <Card className="p-6">
-        <ReferralStats />
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium mb-1">
+                Last Name
+              </label>
+              <Input
+                id="lastName"
+                type="text"
+                value={profile.last_name || ''}
+                onChange={(e) => handleChange('last_name', e.target.value)}
+                placeholder="Enter your last name"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="phoneNumber" className="block text-sm font-medium mb-1">
+                Phone Number
+              </label>
+              <Input
+                id="phoneNumber"
+                type="tel"
+                value={profile.phone_number || ''}
+                onChange={(e) => handleChange('phone_number', e.target.value)}
+                placeholder="Enter your phone number"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="githubUrl" className="block text-sm font-medium mb-1">
+                GitHub URL
+              </label>
+              <Input
+                id="githubUrl"
+                type="url"
+                value={profile.github_url || ''}
+                onChange={(e) => handleChange('github_url', e.target.value)}
+                placeholder="Enter your GitHub profile URL"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="location" className="block text-sm font-medium mb-1">
+                Location
+              </label>
+              <Input
+                id="location"
+                type="text"
+                value={profile.location || ''}
+                onChange={(e) => handleChange('location', e.target.value)}
+                placeholder="Enter your location"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="university" className="block text-sm font-medium mb-1">
+                University
+              </label>
+              <Input
+                id="university"
+                type="text"
+                value={profile.university || ''}
+                onChange={(e) => handleChange('university', e.target.value)}
+                placeholder="Enter your university"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="major" className="block text-sm font-medium mb-1">
+                Major
+              </label>
+              <Input
+                id="major"
+                type="text"
+                value={profile.major || ''}
+                onChange={(e) => handleChange('major', e.target.value)}
+                placeholder="Enter your major"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="graduationYear" className="block text-sm font-medium mb-1">
+                Graduation Year
+              </label>
+              <Input
+                id="graduationYear"
+                type="text"
+                value={profile.graduation_year || ''}
+                onChange={(e) => handleChange('graduation_year', e.target.value)}
+                placeholder="Enter your graduation year"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </form>
       </Card>
     </div>
   );
