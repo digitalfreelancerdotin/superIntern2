@@ -1,0 +1,1 @@
+SELECT delete_user_completely('patra808@gmail.com');

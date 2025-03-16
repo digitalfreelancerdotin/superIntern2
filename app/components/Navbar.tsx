@@ -86,9 +86,78 @@ export function Navbar({ className }: { className?: string }) {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-2">
             <Link href="/">
-              <div className="flex items-center gap-2">
-                <span className="text-blue-500 text-2xl">⬇️</span>
-                <span className="text-xl font-bold">SuperInterns</span>
+              <div className="flex items-center justify-center gap-0 relative" style={{ 
+                height: '40px',
+                perspective: '1000px',
+                transformStyle: 'preserve-3d',
+                marginTop: '10px'
+              }}>
+                <span style={{ 
+                  fontSize: '28px',
+                  color: '#ff8800',
+                  textShadow: '3px 3px 0 #FFD700',
+                  filter: 'drop-shadow(1.5px 1.5px 0 rgba(255, 215, 0, 0.5))',
+                  display: 'inline-block',
+                  position: 'relative',
+                  transform: 'translateY(-2px)',
+                  marginRight: '4px',
+                  zIndex: 2,
+                  fontFamily: 'Arial',
+                  fontWeight: '100'
+                }}>⚡</span>
+                <div className="relative" style={{
+                  transform: 'translateX(5px)',
+                  display: 'inline-block',
+                  transformOrigin: 'center center'
+                }}>
+                  <span className="inline-block" style={{
+                    fontSize: '24px',
+                    WebkitTextStroke: '0.5px black',
+                    WebkitTextFillColor: '#ff0000',
+                    textShadow: '3px 3px 0 #FFD700',
+                    filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
+                    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+                    letterSpacing: '0.1em',
+                    position: 'relative',
+                    zIndex: 1,
+                    fontWeight: '900',
+                    transform: 'skew(-10deg)'
+                  }}>SUPER</span>
+                </div>
+                <span style={{ 
+                  fontSize: '24px',
+                  WebkitTextStroke: '0.5px black',
+                  WebkitTextFillColor: '#ff0000',
+                  textShadow: '3px 3px 0 #FFD700',
+                  filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
+                  display: 'inline-block',
+                  position: 'relative',
+                  transform: 'translateY(-2px) skew(-10deg)',
+                  margin: '0 12px',
+                  zIndex: 2,
+                  fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+                  letterSpacing: '0.1em',
+                  fontWeight: '900'
+                }}>-</span>
+                <div className="relative" style={{
+                  transform: 'translateX(-5px)',
+                  display: 'inline-block',
+                  transformOrigin: 'center center'
+                }}>
+                  <span className="inline-block" style={{
+                    fontSize: '24px',
+                    WebkitTextStroke: '0.5px black',
+                    WebkitTextFillColor: '#ff0000',
+                    textShadow: '3px 3px 0 #FFD700',
+                    filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
+                    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
+                    letterSpacing: '0.1em',
+                    position: 'relative',
+                    zIndex: 1,
+                    fontWeight: '900',
+                    transform: 'skew(-10deg)'
+                  }}>INTERNS</span>
+                </div>
               </div>
             </Link>
           </div>
