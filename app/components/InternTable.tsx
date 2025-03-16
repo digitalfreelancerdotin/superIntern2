@@ -20,106 +20,34 @@ export function InternTable() {
   const supabase = createClientComponentClient<Database>()
 
   useEffect(() => {
-    checkAuthAndLoadInterns();
+    loadInterns();
   }, []);
-
-  const checkAuthAndLoadInterns = async () => {
-    try {
-      const { data: { session }, error: authError } = await supabase.auth.getSession();
-      
-      if (authError) {
-        console.error('Auth error:', authError);
-        return;
-      }
-
-      console.log('Auth state:', session ? 'Authenticated' : 'Not authenticated');
-      
-      if (!session) {
-        console.log('No active session, loading public data only');
-      }
-
-      await loadInterns();
-    } catch (error) {
-      console.error('Error checking auth state:', error);
-      setLoading(false);
-    }
-  };
 
   const loadInterns = async () => {
     try {
       console.log('Starting to load interns...');
       
-      // Get all intern profiles
+      // Simplified query to match our schema
       const { data: internProfiles, error: profileError } = await supabase
         .from('intern_profiles')
-        .select(`
-          id,
-          first_name,
-          last_name,
-          total_points,
-          created_at
-        `)
+        .select('*')
         .eq('is_admin', false)
-        .order('total_points', { ascending: false })
-        .order('created_at', { ascending: true });
+        .order('total_points', { ascending: false });
 
       if (profileError) {
         console.error('Error fetching intern profiles:', profileError);
-        throw profileError;
+        setInterns([]);
+        return;
+      }
+
+      if (!internProfiles) {
+        console.log('No intern profiles found');
+        setInterns([]);
+        return;
       }
 
       console.log('Fetched intern profiles:', internProfiles);
-
-      // Get completed tasks count for each intern
-      if (internProfiles) {
-        const internsWithTasks = await Promise.all(
-          internProfiles.map(async (profile) => {
-            try {
-              const { count, error: taskError } = await supabase
-                .from('task_applications')
-                .select('*', { count: 'exact', head: true })
-                .eq('intern_id', profile.id)
-                .eq('status', 'completed');
-
-              if (taskError) {
-                console.error(`Error fetching tasks for intern ${profile.id}:`, taskError);
-                return {
-                  id: profile.id,
-                  first_name: profile.first_name,
-                  last_name: profile.last_name,
-                  total_points: profile.total_points || 0,
-                  tasks_completed: 0,
-                  created_at: profile.created_at
-                };
-              }
-
-              return {
-                id: profile.id,
-                first_name: profile.first_name,
-                last_name: profile.last_name,
-                total_points: profile.total_points || 0,
-                tasks_completed: count || 0,
-                created_at: profile.created_at
-              };
-            } catch (err) {
-              console.error(`Error processing intern ${profile.id}:`, err);
-              return {
-                id: profile.id,
-                first_name: profile.first_name,
-                last_name: profile.last_name,
-                total_points: profile.total_points || 0,
-                tasks_completed: 0,
-                created_at: profile.created_at
-              };
-            }
-          })
-        );
-        console.log('Processed interns with tasks:', internsWithTasks);
-        setInterns(internsWithTasks);
-      } else {
-        console.log('No intern profiles found');
-        setInterns([]);
-      }
+      setInterns(internProfiles);
     } catch (error) {
       console.error('Error in loadInterns:', error);
       if (error instanceof Error) {
@@ -127,9 +55,9 @@ export function InternTable() {
       }
       setInterns([]);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="w-full">
