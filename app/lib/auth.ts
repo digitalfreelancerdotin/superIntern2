@@ -1,3 +1,4 @@
+//adding a comment
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { type User, type Session } from '@supabase/supabase-js';
 
