@@ -6,7 +6,7 @@ import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Database } from "@/lib/database.types"
 
 interface InternProfile {
-  id: string
+  user_id: string
   first_name: string
   last_name: string
   total_points: number
@@ -20,44 +20,55 @@ export function InternTable() {
   const supabase = createClientComponentClient<Database>()
 
   useEffect(() => {
-    loadInterns();
-  }, []);
+    loadInterns()
+  }, [])
 
   const loadInterns = async () => {
     try {
-      console.log('Starting to load interns...');
-      
-      // Simplified query to match our schema
-      const { data: internProfiles, error: profileError } = await supabase
+      // Get all intern profiles
+      const { data: internProfiles, error } = await supabase
         .from('intern_profiles')
-        .select('*')
+        .select(`
+          user_id,
+          first_name,
+          last_name,
+          total_points,
+          created_at
+        `)
         .eq('is_admin', false)
-        .order('total_points', { ascending: false });
+        .order('total_points', { ascending: false })
+        .order('created_at', { ascending: true })
 
-      if (profileError) {
-        console.error('Error fetching intern profiles:', profileError);
-        setInterns([]);
-        return;
+      if (error) throw error
+
+      // Get completed tasks count for each intern
+      if (internProfiles) {
+        const internsWithTasks = await Promise.all(
+          internProfiles.map(async (profile) => {
+            const { count } = await supabase
+              .from('task_applications')
+              .select('*', { count: 'exact', head: true })
+              .eq('applicant_id', profile.user_id)
+              .eq('status', 'completed')
+
+            return {
+              user_id: profile.user_id,
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+              total_points: profile.total_points || 0,
+              tasks_completed: count || 0,
+              created_at: profile.created_at
+            }
+          })
+        )
+        setInterns(internsWithTasks)
       }
-
-      if (!internProfiles) {
-        console.log('No intern profiles found');
-        setInterns([]);
-        return;
-      }
-
-      console.log('Fetched intern profiles:', internProfiles);
-      setInterns(internProfiles);
     } catch (error) {
-      console.error('Error in loadInterns:', error);
-      if (error instanceof Error) {
-        console.error('Error details:', error.message);
-      }
-      setInterns([]);
+      console.error('Error loading interns:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <div className="w-full">
@@ -88,7 +99,7 @@ export function InternTable() {
                 </tr>
               ) : (
                 interns.map((intern) => (
-                  <tr key={intern.id} className="border-b">
+                  <tr key={intern.user_id} className="border-b">
                     <td className="py-4">{`${intern.first_name} ${intern.last_name}`}</td>
                     <td className="py-4">{intern.tasks_completed}</td>
                     <td className="py-4">{intern.total_points}</td>

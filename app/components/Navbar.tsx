@@ -7,10 +7,12 @@ import { useAuth } from '../context/auth-context';
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter, usePathname } from "next/navigation";
-import { Award, Sun, Moon } from "lucide-react";
+import { Award, Sun, Moon, UserCircle } from "lucide-react";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@/app/components/ui/theme-toggle"
 import { cn } from "@/lib/utils"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu"
+import { useToast } from "@/app/components/ui/use-toast"
 
 export function Navbar({ className }: { className?: string }) {
   const { user, signOut } = useAuth();
@@ -20,6 +22,7 @@ export function Navbar({ className }: { className?: string }) {
   const [points, setPoints] = useState<number | null>(null);
   const supabase = createClientComponentClient();
   const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
 
   // Check if we're in the dashboard section
   const isDashboard = pathname?.startsWith('/dashboard');
@@ -57,27 +60,91 @@ export function Navbar({ className }: { className?: string }) {
   }, [user]);
 
   const loadPoints = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('intern_profiles')
-        .select('total_points')
-        .eq('user_id', user!.id)
-        .single();
+    if (!user) {
+      setPoints(null);
+      return;
+    }
 
-      if (error) {
-        console.error('Error loading points:', error);
+    try {
+      // First check if session is valid
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        setPoints(null);
         return;
       }
 
-      setPoints(data?.total_points || 0);
+      if (!session) {
+        console.log('No active session');
+        setPoints(null);
+        return;
+      }
+
+      // Try to get the user profile
+      const { data: profile, error: profileError } = await supabase
+        .from('intern_profiles')
+        .select('total_points')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      // If profile doesn't exist, create it
+      if (!profile && user.email) {
+        const { error: insertError } = await supabase
+          .from('intern_profiles')
+          .insert({
+            user_id: user.id,
+            email: user.email,
+            first_name: user.email.split('@')[0], // Temporary name from email
+            last_name: '',
+            total_points: 0,
+            is_admin: false,
+            is_active: true
+          });
+
+        if (insertError) {
+          console.error('Error creating profile:', insertError);
+          setPoints(0);
+          return;
+        }
+
+        setPoints(0);
+        return;
+      }
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('Error loading points:', profileError);
+        setPoints(null);
+        return;
+      }
+
+      setPoints(profile?.total_points ?? 0);
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error in loadPoints:', error);
+      setPoints(null);
     }
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/");
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      toast({
+        title: "Signed out successfully",
+        description: "You have been signed out of your account.",
+      });
+      
+      router.push("/");
+      router.refresh();
+    } catch (error) {
+      console.error("Error signing out:", error);
+      toast({
+        title: "Error",
+        description: "There was a problem signing out. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -86,78 +153,9 @@ export function Navbar({ className }: { className?: string }) {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-2">
             <Link href="/">
-              <div className="flex items-center justify-center gap-0 relative" style={{ 
-                height: '40px',
-                perspective: '1000px',
-                transformStyle: 'preserve-3d',
-                marginTop: '10px'
-              }}>
-                <span style={{ 
-                  fontSize: '28px',
-                  color: '#ff8800',
-                  textShadow: '3px 3px 0 #FFD700',
-                  filter: 'drop-shadow(1.5px 1.5px 0 rgba(255, 215, 0, 0.5))',
-                  display: 'inline-block',
-                  position: 'relative',
-                  transform: 'translateY(-2px)',
-                  marginRight: '4px',
-                  zIndex: 2,
-                  fontFamily: 'Arial',
-                  fontWeight: '100'
-                }}>⚡</span>
-                <div className="relative" style={{
-                  transform: 'translateX(5px)',
-                  display: 'inline-block',
-                  transformOrigin: 'center center'
-                }}>
-                  <span className="inline-block" style={{
-                    fontSize: '24px',
-                    WebkitTextStroke: '0.5px black',
-                    WebkitTextFillColor: '#ff0000',
-                    textShadow: '3px 3px 0 #FFD700',
-                    filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
-                    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
-                    letterSpacing: '0.1em',
-                    position: 'relative',
-                    zIndex: 1,
-                    fontWeight: '900',
-                    transform: 'skew(-10deg)'
-                  }}>SUPER</span>
-                </div>
-                <span style={{ 
-                  fontSize: '24px',
-                  WebkitTextStroke: '0.5px black',
-                  WebkitTextFillColor: '#ff0000',
-                  textShadow: '3px 3px 0 #FFD700',
-                  filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
-                  display: 'inline-block',
-                  position: 'relative',
-                  transform: 'translateY(-2px) skew(-10deg)',
-                  margin: '0 12px',
-                  zIndex: 2,
-                  fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
-                  letterSpacing: '0.1em',
-                  fontWeight: '900'
-                }}>-</span>
-                <div className="relative" style={{
-                  transform: 'translateX(-5px)',
-                  display: 'inline-block',
-                  transformOrigin: 'center center'
-                }}>
-                  <span className="inline-block" style={{
-                    fontSize: '24px',
-                    WebkitTextStroke: '0.5px black',
-                    WebkitTextFillColor: '#ff0000',
-                    textShadow: '3px 3px 0 #FFD700',
-                    filter: 'drop-shadow(3px 3px 0 rgba(255, 215, 0, 0.5))',
-                    fontFamily: 'Impact, Haettenschweiler, Arial Black, sans-serif',
-                    letterSpacing: '0.1em',
-                    position: 'relative',
-                    zIndex: 1,
-                    fontWeight: '900',
-                    transform: 'skew(-10deg)'
-                  }}>INTERNS</span>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="text-blue-500 text-2xl">⬇️</span>
+                <span className="text-xl font-bold">SuperInterns</span>
               </div>
             </Link>
           </div>
@@ -206,15 +204,40 @@ export function Navbar({ className }: { className?: string }) {
                 <span>{points} points</span>
               </div>
             )}
-            {user ? (
-              <Button onClick={handleSignOut} variant="outline">
-                Sign Out
-              </Button>
-            ) : (
-              <Button variant="outline" onClick={() => router.push("/auth/login")}>
-                Sign In
-              </Button>
+            {!user && (
+              <div className="flex items-center space-x-4">
+                <Button variant="outline" onClick={() => router.push("/auth/login")}>
+                  Sign In
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button>Sign Up</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => router.push("/auth/signup")}>
+                      Candidate Sign Up
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => router.push("/auth/employer/signup")}>
+                      Employer Sign Up
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <UserCircle className="h-6 w-6" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>

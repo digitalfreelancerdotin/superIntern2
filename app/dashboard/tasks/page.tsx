@@ -4,24 +4,28 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/app/context/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/app/components/ui/card";
 import { useToast } from "@/app/components/ui/use-toast";
-import { Task } from "@/app/lib/tasks";
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
 import Link from "next/link";
 import { Alert, AlertDescription } from "@/app/components/ui/alert";
 import { Skeleton } from "@/app/components/ui/skeleton";
 
-interface TaskWithDetails extends Task {
-  intern_profiles: {
-    email: string;
-    first_name: string;
-    last_name: string;
-  } | null;
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  points: number;
+  status: string;
+  is_paid: boolean;
+  payment_amount: number | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
 }
 
 export default function MyTasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [tasks, setTasks] = useState<TaskWithDetails[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const supabase = createClientComponentClient();
@@ -33,27 +37,39 @@ export default function MyTasksPage() {
   }, [user]);
 
   const loadTasks = async () => {
+    if (!user) return;
+
     try {
       setIsLoading(true);
       const { data, error } = await supabase
         .from('tasks')
         .select(`
-          *,
-          intern_profiles!tasks_assigned_to_fkey (
-            email,
-            first_name,
-            last_name
-          )
+          id,
+          title,
+          description,
+          points,
+          status,
+          is_paid,
+          payment_amount,
+          created_at,
+          updated_at,
+          created_by
         `)
-        .eq('assigned_to', user?.id)
-        .order('status', { ascending: true })
+        .eq('assigned_to', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
+
       setTasks(data || []);
     } catch (error) {
       console.error('Error loading tasks:', error);
-      setError('Failed to load your tasks. Please try again later.');
+      toast({
+        title: "Error",
+        description: "Failed to load your tasks. Please try again later.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -72,10 +88,13 @@ export default function MyTasksPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-12 w-full" />
-        <Skeleton className="h-32 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="container mx-auto py-8">
+        <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
+        <div className="animate-pulse space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+          ))}
+        </div>
       </div>
     );
   }

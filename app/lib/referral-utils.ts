@@ -5,8 +5,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export const POINTS_PER_REFERRAL = parseInt(process.env.POINTS_PER_REFERRAL || '50', 10); // Points awarded for each successful referral
-export const TASKS_REQUIRED = parseInt(process.env.TASKS_REQUIRED || '5', 10); // Number of tasks referred user needs to complete
+const POINTS_PER_REFERRAL = parseInt(process.env.POINTS_PER_REFERRAL || '50', 10); // Points awarded for each successful referral
+const TASKS_REQUIRED = parseInt(process.env.TASKS_REQUIRED || '5', 10); // Number of tasks referred user needs to complete
 
 // Generate a random referral code
 export function generateReferralCode(length: number = 6): string {

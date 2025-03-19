@@ -6,7 +6,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '../context/auth-context';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { LayoutDashboard, ListPlus, CheckSquare, Users, PlusCircle, ClipboardList, UserCog, FileText, LayoutGrid, ListTodo } from 'lucide-react';
+import { LayoutDashboard, ListPlus, CheckSquare, Users, ClipboardList, UserCog, FileText, ListTodo, User } from 'lucide-react';
+import { useToast } from '@/app/components/ui/use-toast';
 
 export function Sidebar({ className }: { className?: string }) {
   const pathname = usePathname();
@@ -14,38 +15,107 @@ export function Sidebar({ className }: { className?: string }) {
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState(false);
   const [isActive, setIsActive] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     async function checkUserStatus() {
-      if (!user) return;
+      if (!user) {
+        setIsAdmin(false);
+        setIsActive(true);
+        return;
+      }
 
       const supabase = createClientComponentClient();
       try {
-        const { data: profile, error } = await supabase
-          .from('intern_profiles')
-          .select('is_admin, is_active')
-          .eq('user_id', user.id)
-          .single();
-
-        if (error) {
-          console.error('Error checking user status:', error);
+        // First check if session is valid
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Session error:', sessionError);
           return;
         }
 
-        setIsAdmin(profile?.is_admin || false);
-        setIsActive(profile?.is_active ?? true);
+        if (!session) {
+          console.log('No active session');
+          return;
+        }
 
-        // If user is inactive and not on the suspended page, redirect them
-        if (!profile?.is_active && pathname !== '/dashboard/suspended') {
-          router.push('/dashboard/suspended');
+        // Try to get the user profile
+        const { data: profile, error: profileError } = await supabase
+          .from('intern_profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        // If profile doesn't exist, create it
+        if ((!profile || profileError?.code === 'PGRST116') && user.email) {
+          try {
+            const { data: newProfile, error: insertError } = await supabase
+              .from('intern_profiles')
+              .insert({
+                user_id: user.id,
+                email: user.email,
+                first_name: user.email.split('@')[0], // Temporary name from email
+                last_name: '',
+                is_admin: false,
+                is_active: true,
+                total_points: 0,
+                bio: '',
+                skills: []
+              })
+              .select()
+              .single();
+
+            if (insertError) {
+              console.error('Error creating profile:', insertError);
+              toast({
+                title: "Error",
+                description: "Failed to create your profile. Please try again.",
+                variant: "destructive",
+              });
+              return;
+            }
+
+            if (newProfile) {
+              setIsAdmin(newProfile.is_admin || false);
+              setIsActive(newProfile.is_active ?? true);
+              return;
+            }
+          } catch (error) {
+            console.error('Error in profile creation:', error);
+            toast({
+              title: "Error",
+              description: "Failed to set up your profile. Please refresh the page.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error checking user status:', profileError);
+          return;
+        }
+
+        if (profile) {
+          setIsAdmin(profile.is_admin || false);
+          setIsActive(profile.is_active ?? true);
+
+          // If user is inactive and not on the suspended page, redirect them
+          if (!profile.is_active && pathname !== '/dashboard/suspended') {
+            router.push('/dashboard/suspended');
+          }
         }
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Error in checkUserStatus:', error);
+        // Set safe defaults if there's an error
+        setIsAdmin(false);
+        setIsActive(true);
       }
     }
 
     checkUserStatus();
-  }, [user, pathname]);
+  }, [user, pathname, router, toast]);
 
   // Base navigation items (visible to active users)
   const baseNavigation = [
@@ -56,10 +126,16 @@ export function Sidebar({ className }: { className?: string }) {
       current: pathname === "/dashboard",
     },
     {
-      name: "Open Tasks",
-      href: "/dashboard/open-tasks",
+      name: "Profile",
+      href: "/dashboard/profile",
+      icon: User,
+      current: pathname === "/dashboard/profile",
+    },
+    {
+      name: "Available Tasks",
+      href: "/dashboard/available-tasks",
       icon: ListPlus,
-      current: pathname === "/dashboard/open-tasks",
+      current: pathname === "/dashboard/available-tasks",
     },
     {
       name: "My Tasks",
@@ -73,33 +149,21 @@ export function Sidebar({ className }: { className?: string }) {
       icon: Users,
       current: pathname === "/dashboard/referrals",
     },
-    {
-      name: "Profile",
-      href: "/dashboard/profile",
-      icon: UserCog,
-      current: pathname === "/dashboard/profile",
-    },
   ];
 
   // Admin-only navigation items
   const adminNavigation = [
     {
-      name: "Create Task",
-      href: "/dashboard/tasks/create",
-      icon: PlusCircle,
-      current: pathname === "/dashboard/tasks/create",
+      name: "Manage Tasks",
+      href: "/dashboard/admin/tasks",
+      icon: ListTodo,
+      current: pathname === "/dashboard/admin/tasks",
     },
     {
-      name: "Task Applications",
-      href: "/dashboard/task-applications",
-      icon: ClipboardList,
-      current: pathname === "/dashboard/task-applications",
-    },
-    {
-      name: "Manage Interns",
-      href: "/dashboard/interns",
+      name: "Manage Users",
+      href: "/dashboard/admin/users",
       icon: UserCog,
-      current: pathname === "/dashboard/interns",
+      current: pathname === "/dashboard/admin/users",
     },
     {
       name: "Corporate Requests",
@@ -107,6 +171,12 @@ export function Sidebar({ className }: { className?: string }) {
       icon: FileText,
       current: pathname === "/dashboard/internship-requests",
     },
+    {
+      name: "Task Applications",
+      href: "/dashboard/task-applications",
+      icon: ClipboardList,
+      current: pathname === "/dashboard/task-applications",
+    }
   ];
 
   // If user is inactive, only show dashboard that redirects to suspended page

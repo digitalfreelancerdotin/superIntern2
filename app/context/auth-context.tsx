@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 type AuthContextType = {
   user: User | null;
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const supabase = createClientComponentClient();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     // Initialize auth state
@@ -32,11 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session: currentSession } } = await supabase.auth.getSession();
         setSession(currentSession);
         setUser(currentSession?.user || null);
-
-        // If user is authenticated, redirect to dashboard
-        if (currentSession?.user) {
-          router.push('/dashboard/intern');
-        }
       } catch (error) {
         console.error('Error initializing auth:', error);
       } finally {
@@ -55,7 +51,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Handle auth state changes
       if (event === 'SIGNED_IN' && session?.user) {
-        router.push('/dashboard/intern');
+        if (pathname === '/' || pathname.startsWith('/auth/')) {
+          router.push('/dashboard/intern');
+        }
       } else if (event === 'SIGNED_OUT') {
         router.push('/');
       }
@@ -65,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [supabase.auth, router]);
+  }, [supabase.auth, router, pathname]);
 
   // Sign in with Google
   const signInWithGoogle = async () => {

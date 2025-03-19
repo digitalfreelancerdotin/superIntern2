@@ -5,15 +5,21 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 interface InternProfile {
   user_id: string;
   email: string;
-  first_name?: string;
-  last_name?: string;
-  phone_number?: string;
+  first_name: string;  // Required
+  last_name: string;   // Required
+  phone_number: string; // Required
   github_url?: string;
   resume_url?: string;
   location?: string;
   university?: string;
   major?: string;
   graduation_year?: string;
+  is_admin?: boolean;
+  is_active?: boolean;
+  total_points?: number;
+  bio?: string;
+  skills?: string[];
+  dream_role?: string;
 }
 
 // Helper function to get the Supabase client
@@ -53,58 +59,61 @@ async function getSupabaseClient() {
   }
 }
 
-export async function getInternProfile(userId: string) {
+export async function getInternProfile(userId: string): Promise<InternProfile | null> {
+  if (!userId) {
+    throw new Error('User ID is required');
+  }
+
+  const supabase = createClientComponentClient();
+  
   try {
-    console.log('[getInternProfile] Starting profile fetch for userId:', userId);
+    // Get the current session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
     
-    if (!userId) {
-      console.error('[getInternProfile] No userId provided');
-      throw new Error('User ID is required for fetching profile');
-    }
+    if (sessionError) throw sessionError;
+    if (!session) throw new Error('No active session');
 
-    console.log('[getInternProfile] Creating Supabase client...');
-    const supabase = createClientComponentClient();
-    
-    console.log('[getInternProfile] Getting session...');
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    
-    if (sessionError) {
-      console.error('[getInternProfile] Session error:', sessionError);
-      throw new Error(`Session error: ${sessionError.message}`);
-    }
-    
-    if (!sessionData.session) {
-      console.error('[getInternProfile] No active session found');
-      throw new Error('No active session found');
-    }
-
-    console.log('[getInternProfile] Session found, fetching profile...');
+    // Try to get the user profile
     const { data: profile, error: profileError } = await supabase
       .from('intern_profiles')
       .select('*')
       .eq('user_id', userId)
       .single();
 
-    if (profileError) {
-      console.error('[getInternProfile] Database error:', profileError);
-      throw new Error(`Database error: ${profileError.message}`);
+    if (profileError && profileError.code !== 'PGRST116') {
+      throw profileError;
     }
 
+    // If profile doesn't exist, create it
     if (!profile) {
-      console.log('[getInternProfile] No profile found for user:', userId);
-      // Instead of returning null, let's create a new profile
-      console.log('[getInternProfile] Attempting to create new profile...');
       const { data: userData } = await supabase.auth.getUser();
-      
       if (!userData.user?.email) {
         throw new Error('User email not found');
       }
 
-      const newProfile = {
+      // Get name from email (e.g., "john.doe@example.com" -> "John" "Doe")
+      const emailName = userData.user.email.split('@')[0];
+      const names = emailName.split(/[._-]/);
+      const firstName = names[0] ? names[0].charAt(0).toUpperCase() + names[0].slice(1) : '';
+      const lastName = names[1] ? names[1].charAt(0).toUpperCase() + names[1].slice(1) : '';
+
+      const newProfile: InternProfile = {
         user_id: userId,
         email: userData.user.email,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        first_name: firstName || 'New',  // Default required fields
+        last_name: lastName || 'User',
+        phone_number: '',  // Required but empty, user must fill this
+        is_admin: false,
+        is_active: true,
+        total_points: 0,
+        bio: '',
+        skills: [],
+        github_url: '',
+        location: '',
+        university: '',
+        major: '',
+        graduation_year: '',
+        dream_role: ''
       };
 
       const { data: createdProfile, error: createError } = await supabase
@@ -113,136 +122,150 @@ export async function getInternProfile(userId: string) {
         .select()
         .single();
 
-      if (createError) {
-        console.error('[getInternProfile] Error creating new profile:', createError);
-        throw new Error(`Failed to create new profile: ${createError.message}`);
-      }
-
-      console.log('[getInternProfile] Created new profile:', createdProfile);
+      if (createError) throw createError;
       return createdProfile;
     }
 
-    console.log('[getInternProfile] Successfully found profile:', profile);
     return profile;
   } catch (error) {
-    console.error('[getInternProfile] Caught error:', error);
-    if (error instanceof Error) {
-      throw new Error(`Profile fetch failed: ${error.message}`);
-    }
-    throw new Error(`Profile fetch failed: ${JSON.stringify(error)}`);
+    console.error('Error in getInternProfile:', error);
+    throw error;
   }
 }
 
-export async function createOrUpdateInternProfile(profile: InternProfile) {
+export async function createOrUpdateInternProfile(profile: Partial<InternProfile>): Promise<void> {
+  if (!profile.user_id) {
+    throw new Error('User ID is required');
+  }
+
+  // Validate required fields
+  if (profile.first_name !== undefined && !profile.first_name.trim()) {
+    throw new Error('First name is required');
+  }
+  if (profile.last_name !== undefined && !profile.last_name.trim()) {
+    throw new Error('Last name is required');
+  }
+  if (profile.phone_number !== undefined && !profile.phone_number.trim()) {
+    throw new Error('Phone number is required');
+  }
+
   const supabase = createClientComponentClient();
   
   try {
-    // Validate user_id
-    if (!profile.user_id) {
-      throw new Error('User ID is required');
-    }
-
-    // Get the current user's email and existing profile
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user?.email) {
-      throw new Error('User email not found');
-    }
-
-    // Get existing profile data
-    const { data: existingProfile } = await supabase
+    // Get current profile data
+    const { data: existingProfile, error: fetchError } = await supabase
       .from('intern_profiles')
       .select('*')
       .eq('user_id', profile.user_id)
       .single();
 
-    // Merge existing data with new data, preserving existing values if not provided
-    const updatedProfile = {
-      user_id: profile.user_id,
-      email: user.email,
-      first_name: profile.first_name ?? existingProfile?.first_name ?? null,
-      last_name: profile.last_name ?? existingProfile?.last_name ?? null,
-      phone_number: profile.phone_number ?? existingProfile?.phone_number ?? null,
-      github_url: profile.github_url ?? existingProfile?.github_url ?? null,
-      resume_url: profile.resume_url ?? existingProfile?.resume_url ?? null,
-      location: profile.location ?? existingProfile?.location ?? null,
-      university: profile.university ?? existingProfile?.university ?? null,
-      major: profile.major ?? existingProfile?.major ?? null,
-      graduation_year: profile.graduation_year ?? existingProfile?.graduation_year ?? null,
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError;
+    }
+
+    // Validate that required fields exist in either existing profile or update
+    const mergedProfile = {
+      ...existingProfile,
+      ...profile,
       updated_at: new Date().toISOString()
     };
 
-    // Create or update the profile
-    const { error } = await supabase
-      .from('intern_profiles')
-      .upsert(updatedProfile, {
-        onConflict: 'user_id'
-      });
-
-    if (error) {
-      console.error('Error creating/updating profile:', error);
-      throw error;
+    if (!mergedProfile.first_name?.trim()) {
+      throw new Error('First name is required');
+    }
+    if (!mergedProfile.last_name?.trim()) {
+      throw new Error('Last name is required');
+    }
+    if (!mergedProfile.phone_number?.trim()) {
+      throw new Error('Phone number is required');
     }
 
-    return { success: true };
+    const { error: updateError } = await supabase
+      .from('intern_profiles')
+      .upsert(mergedProfile)
+      .eq('user_id', profile.user_id);
+
+    if (updateError) throw updateError;
   } catch (error) {
     console.error('Error in createOrUpdateInternProfile:', error);
-    return { success: false, error };
+    throw error;
   }
 }
 
-export async function uploadResume(userId: string, file: File) {
+export async function uploadResume(userId: string, file: File): Promise<string> {
+  if (!userId || !file) {
+    throw new Error('User ID and file are required');
+  }
+
+  const supabase = createClientComponentClient();
+
   try {
-    if (!userId) {
-      throw new Error('User ID is required');
-    }
-
-    if (!file) {
-      throw new Error('File is required');
-    }
-
-    // Get the appropriate Supabase client
-    const client = await getSupabaseClient();
-
-    // Create a unique file path using userId and timestamp
+    // Create a unique file path
     const timestamp = new Date().getTime();
     const fileExt = file.name.split('.').pop();
     const filePath = `${userId}/${timestamp}.${fileExt}`;
 
-    // Upload file to Supabase storage
-    const { error: uploadError } = await client.storage
-      .from(RESUMES_BUCKET)
+    // First check if the bucket exists and is accessible
+    const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+    
+    if (bucketsError) {
+      console.error('Error checking buckets:', bucketsError);
+      throw new Error('Unable to access storage. Please try again later.');
+    }
+
+    const resumesBucket = buckets.find(b => b.name === 'resumes');
+    if (!resumesBucket) {
+      console.error('Resumes bucket not found');
+      // Try to create the bucket
+      const { error: createError } = await supabase.storage.createBucket('resumes', {
+        public: true,
+        fileSizeLimit: 5242880, // 5MB
+        allowedMimeTypes: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+      });
+
+      if (createError) {
+        console.error('Error creating bucket:', createError);
+        throw new Error('Resume storage is not properly configured. Please contact support.');
+      }
+    }
+
+    // Upload file
+    const { error: uploadError } = await supabase.storage
+      .from('resumes')
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: true
       });
 
     if (uploadError) {
-      console.error('Error uploading resume:', uploadError);
-      throw new Error(`Failed to upload resume: ${uploadError.message}`);
+      console.error('Upload error:', uploadError);
+      if (uploadError.message.includes('bucket') || uploadError.message.includes('not found')) {
+        throw new Error('Resume storage is not properly configured. Please contact support.');
+      }
+      throw uploadError;
     }
 
-    // Get the public URL of the uploaded file
-    const { data } = client.storage
-      .from(RESUMES_BUCKET)
+    // Get public URL
+    const { data } = supabase.storage
+      .from('resumes')
       .getPublicUrl(filePath);
 
-    if (!data?.publicUrl) {
-      throw new Error('Failed to get public URL for uploaded file');
+    if (!data.publicUrl) {
+      throw new Error('Failed to get public URL');
     }
 
-    // Update the profile with the resume URL
+    // Update profile with resume URL
     await createOrUpdateInternProfile({
       user_id: userId,
-      email: '', // Required by type but will be merged with existing data
       resume_url: data.publicUrl
-    } as InternProfile);
+    });
 
     return data.publicUrl;
   } catch (error) {
     console.error('Error in uploadResume:', error);
     if (error instanceof Error) {
-      throw error;
+      throw new Error(`Failed to upload resume: ${error.message}`);
     }
-    throw new Error('Unknown error occurred while uploading resume');
+    throw new Error('Failed to upload resume. Please try again.');
   }
 } 

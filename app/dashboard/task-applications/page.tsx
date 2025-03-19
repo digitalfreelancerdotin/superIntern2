@@ -36,7 +36,7 @@ interface TaskApplication {
   task: {
     title: string;
     points: number;
-    payment_amount: number;
+    payment_amount: number | null;
     is_paid: boolean;
   };
   applicant: {
@@ -80,7 +80,7 @@ export default function TaskApplicationsPage() {
       }
 
       // Get all applications with task and applicant details
-      const { data, error } = await supabase
+      const { data: applications, error: applicationsError } = await supabase
         .from('task_applications')
         .select(`
           id,
@@ -89,57 +89,44 @@ export default function TaskApplicationsPage() {
           status,
           created_at,
           notes,
-          tasks (
+          task:tasks (
             title,
             points,
             payment_amount,
             is_paid
+          ),
+          applicant:intern_profiles (
+            first_name,
+            last_name,
+            email
           )
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-
-      // Get the applicant details in a separate query
-      const applicantIds = [...new Set((data || []).map(app => app.applicant_id))];
-      const { data: applicantData, error: applicantError } = await supabase
-        .from('intern_profiles')
-        .select('user_id, first_name, last_name, email')
-        .in('user_id', applicantIds);
-
-      if (applicantError) throw applicantError;
-
-      // Create a map of applicant details
-      const applicantMap = new Map(
-        applicantData?.map(profile => [profile.user_id, profile]) || []
-      );
+      if (applicationsError) throw applicationsError;
 
       // Transform the data to match our interface
-      const transformedData = (data || []).map(app => {
-        const applicantProfile = applicantMap.get(app.applicant_id);
-        const taskData = Array.isArray(app.tasks) ? app.tasks[0] : app.tasks;
-        return {
-          id: app.id,
-          task_id: app.task_id,
-          applicant_id: app.applicant_id,
-          status: app.status as TaskApplication['status'],
-          created_at: app.created_at,
-          notes: app.notes,
-          task: {
-            title: taskData?.title || '',
-            points: taskData?.points || 0,
-            payment_amount: taskData?.payment_amount || 0,
-            is_paid: taskData?.is_paid || false
-          },
-          applicant: {
-            first_name: applicantProfile?.first_name || '',
-            last_name: applicantProfile?.last_name || '',
-            email: applicantProfile?.email || ''
-          }
-        };
-      });
+      const transformedApplications: TaskApplication[] = (applications || []).map(app => ({
+        id: app.id as string,
+        task_id: app.task_id as string,
+        applicant_id: app.applicant_id as string,
+        status: app.status as TaskApplication['status'],
+        created_at: app.created_at as string,
+        notes: app.notes as string | null,
+        task: {
+          title: (app.task as any)?.title || '',
+          points: (app.task as any)?.points || 0,
+          payment_amount: (app.task as any)?.payment_amount || null,
+          is_paid: (app.task as any)?.is_paid || false
+        },
+        applicant: {
+          first_name: (app.applicant as any)?.first_name || '',
+          last_name: (app.applicant as any)?.last_name || '',
+          email: (app.applicant as any)?.email || ''
+        }
+      }));
 
-      setApplications(transformedData);
+      setApplications(transformedApplications);
     } catch (error) {
       console.error('Error loading applications:', error);
       toast({
@@ -158,7 +145,7 @@ export default function TaskApplicationsPage() {
         .from('task_applications')
         .update({ 
           status,
-          notes
+          notes: notes || null
         })
         .eq('id', applicationId);
 
@@ -168,6 +155,10 @@ export default function TaskApplicationsPage() {
         title: "Success",
         description: `Application ${status}`,
       });
+
+      // Reset states
+      setSelectedApp({ app: null, action: null });
+      setRejectionReason('');
 
       // Reload applications to get updated data
       await loadApplications();
@@ -182,7 +173,16 @@ export default function TaskApplicationsPage() {
   };
 
   if (isLoading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <div className="container mx-auto py-8">
+        <h1 className="text-2xl font-bold mb-6">Task Applications</h1>
+        <Card className="p-6">
+          <div className="flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          </div>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -203,142 +203,100 @@ export default function TaskApplicationsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {applications.map((app) => (
-              <TableRow key={app.id}>
-                <TableCell className="font-medium">{app.task.title}</TableCell>
-                <TableCell>
-                  {app.applicant.first_name} {app.applicant.last_name}
-                  <br />
-                  <span className="text-sm text-gray-500">{app.applicant.email}</span>
-                </TableCell>
-                <TableCell>{app.task.points}</TableCell>
-                <TableCell>
-                  {app.task.is_paid ? `$${app.task.payment_amount}` : 'No payment'}
-                </TableCell>
-                <TableCell>
-                  {new Date(app.created_at).toLocaleDateString()}
-                </TableCell>
-                <TableCell>
-                  <span className={`capitalize ${
-                    app.status === 'approved' ? 'text-green-600' :
-                    app.status === 'rejected' ? 'text-red-600' :
-                    'text-yellow-600'
-                  }`}>
-                    {app.status}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  {app.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => setSelectedApp({ app, action: 'approved' })}
-                        className="bg-green-600 hover:bg-green-700 cursor-pointer"
-                      >
-                        Approve
-                      </Button>
-                      <Button
-                        onClick={() => setSelectedApp({ app, action: 'rejected' })}
-                        variant="destructive"
-                        className="bg-red-600 hover:bg-red-700 text-white cursor-pointer"
-                      >
-                        Reject
-                      </Button>
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {applications.length === 0 && (
+            {applications.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-4">
                   No task applications found
                 </TableCell>
               </TableRow>
+            ) : (
+              applications.map((app) => (
+                <TableRow key={app.id}>
+                  <TableCell className="font-medium">{app.task.title}</TableCell>
+                  <TableCell>
+                    {app.applicant.first_name} {app.applicant.last_name}
+                    <br />
+                    <span className="text-sm text-gray-500">{app.applicant.email}</span>
+                  </TableCell>
+                  <TableCell>{app.task.points}</TableCell>
+                  <TableCell>
+                    {app.task.is_paid ? `$${app.task.payment_amount}` : 'No payment'}
+                  </TableCell>
+                  <TableCell>
+                    {new Date(app.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell>
+                    <span className={`capitalize ${
+                      app.status === 'approved' ? 'text-green-600' :
+                      app.status === 'rejected' ? 'text-red-600' :
+                      'text-yellow-600'
+                    }`}>
+                      {app.status}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    {app.status === 'pending' && (
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={() => setSelectedApp({ app, action: 'approved' })}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          onClick={() => setSelectedApp({ app, action: 'rejected' })}
+                          variant="destructive"
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </Card>
 
-      <AlertDialog open={selectedApp.app !== null} onOpenChange={(open) => {
-        if (!open) {
-          setSelectedApp({ app: null, action: null });
-          setRejectionReason('');
-        }
-      }}>
-        <AlertDialogContent className="bg-white dark:bg-gray-800">
+      <AlertDialog 
+        open={selectedApp.app !== null} 
+        onOpenChange={() => setSelectedApp({ app: null, action: null })}
+      >
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               {selectedApp.action === 'approved' ? 'Approve Application' : 'Reject Application'}
             </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              {selectedApp.app && (
-                <div className="space-y-4">
-                  <div>
-                    Are you sure you want to {selectedApp.action === 'approved' ? 'approve' : 'reject'} the application for "{selectedApp.app.task.title}" from {selectedApp.app.applicant.first_name} {selectedApp.app.applicant.last_name}?
-                  </div>
-                  {selectedApp.action === 'rejected' && (
-                    <div>
-                      <label className="block text-sm font-medium mb-2">
-                        Rejection Reason (will be sent to the applicant):
-                      </label>
-                      <Textarea
-                        value={rejectionReason}
-                        onChange={(e) => setRejectionReason(e.target.value)}
-                        placeholder="Please provide a reason for rejection..."
-                        className="w-full"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
+            <AlertDialogDescription>
+              {selectedApp.action === 'approved' 
+                ? 'Are you sure you want to approve this application?' 
+                : 'Please provide a reason for rejection:'}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => {
-              setSelectedApp({ app: null, action: null });
-              setRejectionReason('');
-            }}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (selectedApp.app && selectedApp.action) {
-                  if (selectedApp.action === 'rejected' && !rejectionReason.trim()) {
-                    toast({
-                      title: "Error",
-                      description: "Please provide a reason for rejection",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
 
-                  await handleApplicationUpdate(
+          {selectedApp.action === 'rejected' && (
+            <Textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Enter rejection reason..."
+              className="mt-4"
+            />
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedApp.app && selectedApp.action) {
+                  handleApplicationUpdate(
                     selectedApp.app.id,
                     selectedApp.action,
                     selectedApp.action === 'rejected' ? rejectionReason : undefined
                   );
-
-                  if (selectedApp.action === 'rejected') {
-                    const { error: taskError } = await supabase
-                      .from('tasks')
-                      .update({ status: 'open' })
-                      .eq('id', selectedApp.app.task_id);
-
-                    if (taskError) {
-                      console.error('Error updating task status:', taskError);
-                      toast({
-                        title: "Warning",
-                        description: "Application rejected but there was an error updating task status",
-                        variant: "destructive",
-                      });
-                    }
-                  }
-
-                  setSelectedApp({ app: null, action: null });
-                  setRejectionReason('');
                 }
               }}
-              className={selectedApp.action === 'approved' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700 text-white'}
+              className={selectedApp.action === 'approved' ? 'bg-green-600 hover:bg-green-700' : ''}
             >
               {selectedApp.action === 'approved' ? 'Approve' : 'Reject'}
             </AlertDialogAction>

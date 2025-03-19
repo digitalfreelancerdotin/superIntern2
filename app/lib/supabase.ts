@@ -25,149 +25,22 @@ export const supabase = createClientComponentClient({
 // Storage bucket for resumes
 export const RESUMES_BUCKET = 'resumes';
 
-// Validate connection
+// Validate connection to database
 export const validateConnection = async () => {
   try {
-    console.log('Validating Supabase connection...');
-    
-    // Check if environment variables are properly set
-    if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('Missing Supabase credentials in environment variables');
-      return false;
-    }
-    
-    // First check if we can connect to Supabase at all
-    console.log('Checking basic connection...');
-    try {
-      // Try a simple auth check first - this is more reliable
-      const { data: authData, error: authError } = await supabase.auth.getSession();
-      
-      if (authError) {
-        console.error('Auth check failed:', authError);
-        return false;
-      }
-      
-      console.log('Auth check succeeded, session:', authData?.session ? 'exists' : 'null');
-      
-      // Then try a simple query to check database access
-      const { data: healthData, error: healthError } = await supabase
-        .from('intern_profiles')
-        .select('count')
-        .limit(1);
-      
-      if (healthError) {
-        console.error('Health check failed:', {
-          code: healthError.code,
-          message: healthError.message,
-          details: healthError.details
-        });
-        
-        // If the error is about the table not existing, that's a different issue
-        if (healthError.message?.includes('does not exist')) {
-          console.error('The intern_profiles table does not exist. Please run the SQL setup script.');
-          return false;
-        }
-        
-        // Try a different approach - just check if we can access any system info
-        try {
-          const { data: systemData, error: systemError } = await supabase
-            .from('_prisma_migrations')
-            .select('count')
-            .limit(1)
-            .maybeSingle();
-            
-          if (systemError && !systemError.message?.includes('does not exist')) {
-            console.error('System table check failed:', systemError);
-            return false;
-          }
-        } catch (systemCheckError) {
-          console.error('System check threw an exception:', systemCheckError);
-          // Continue anyway - this is just an additional check
-        }
-      } else {
-        console.log('Health check succeeded:', healthData);
-      }
-    } catch (healthCheckError) {
-      console.error('Health check threw an exception:', healthCheckError);
+    const { data, error } = await supabase
+      .from('intern_profiles')
+      .select('user_id')
+      .limit(1);
+
+    if (error) {
+      console.error('Database connection error:', error);
       return false;
     }
 
-    // Test the connection by making a simple query
-    console.log('Testing query capability...');
-    try {
-      const { data, error, status, statusText } = await supabase
-        .from('intern_profiles')
-        .select('count')
-        .limit(1);
-
-      console.log('Connection test response:', {
-        data,
-        error,
-        status,
-        statusText,
-        hasData: !!data,
-        errorDetails: error ? {
-          code: error.code,
-          message: error.message,
-          details: error.details
-        } : null
-      });
-
-      if (error) {
-        console.error('Supabase connection validation failed:', {
-          code: error.code,
-          message: error.message,
-          details: error.details
-        });
-        
-        // If the error is about the table not existing, we can still consider the connection valid
-        if (error.message?.includes('does not exist')) {
-          console.warn('The intern_profiles table does not exist, but connection is valid.');
-          return true;
-        }
-        
-        return false;
-      }
-      
-    } catch (queryError) {
-      console.error('Query test threw an exception:', queryError);
-      return false;
-    }
-
-    // Also test storage access
-    console.log('Testing storage access...');
-    try {
-      const { data: buckets, error: storageError } = await supabase
-        .storage
-        .listBuckets();
-
-      if (storageError) {
-        console.error('Storage access test failed:', {
-          message: storageError.message,
-          name: storageError.name
-        });
-        // Don't fail the connection test just because storage failed
-        // We'll handle storage issues separately
-        console.warn('Storage access failed but continuing with database connection');
-      } else {
-        console.log('Storage buckets:', buckets);
-        
-        // Check if the resumes bucket exists
-        const resumesBucketExists = buckets?.some(bucket => bucket.name === RESUMES_BUCKET);
-        if (!resumesBucketExists) {
-          console.warn(`The '${RESUMES_BUCKET}' bucket does not exist. Will attempt to create it during initialization.`);
-        }
-      }
-    } catch (storageError) {
-      console.error('Storage test threw an exception:', storageError);
-      // Don't fail the connection test just because storage failed
-      console.warn('Storage access failed but continuing with database connection');
-    }
-
-    console.log('Supabase connection validation successful');
     return true;
   } catch (error) {
-    console.error('Unexpected error during connection validation:', error);
+    console.error('Error validating connection:', error);
     return false;
   }
 };
@@ -260,6 +133,11 @@ export const initStorage = async () => {
     throw error;
   }
 };
+
+// Initialize storage on client creation
+initStorage().catch(error => {
+  console.error('Failed to initialize storage:', error);
+});
 
 // Get a client with the user's auth session
 export const getSupabaseClient = async () => {
